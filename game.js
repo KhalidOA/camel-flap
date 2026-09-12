@@ -23,14 +23,14 @@
   resize();
 
   // ---- Constants (tuned in logical px, scaled by dt so frame-rate independent) ----
-  const GRAVITY = 1500;      // px/s^2
-  const FLAP_VELOCITY = -430; // px/s
-  const MAX_FALL = 700;
+  const GRAVITY = 1050;      // px/s^2
+  const FLAP_VELOCITY = -370; // px/s
+  const MAX_FALL = 550;
   const GROUND_H = 54;
   const PIPE_W = 74;
-  const GAP_H = 190;
-  const PIPE_SPEED = 150;    // px/s
-  const PIPE_INTERVAL = 1450; // ms
+  const GAP_H = 250;
+  const PIPE_SPEED = 115;    // px/s
+  const PIPE_INTERVAL = 1750; // ms
   const PLAYER_X = LW * 0.28;
   const HALF_W = 34;
   const HALF_H = 24;
