@@ -36,6 +36,107 @@
   const HALF_H = 24;
 
   const BEST_KEY = 'camelFlapBest';
+  const MUTE_KEY = 'camelFlapMuted';
+  const MUTE_BTN = { x: LW - 46, y: 10, w: 36, h: 36 };
+
+  // ---- Procedurally generated background music (no audio files) ----
+  // A short looping phrase in D Hijaz (a scale common in Arabic music)
+  // over a drone, plus a simple darbuka-style dum/tak percussion pulse.
+  const Music = (() => {
+    const SCALE = [293.66, 311.13, 369.99, 392.00, 440.00, 466.16, 523.25, 587.33]; // D Eb F# G A Bb C D
+    const MELODY = [4, -1, 3, 2, 3, -1, 1, 0, 0, -1, 1, 2, 4, -1, 2, -1];
+    const TEMPO = 96;
+    const STEP_DUR = 60 / TEMPO / 2;
+
+    let ctx = null;
+    let masterGain = null;
+    let started = false;
+    let muted = localStorage.getItem(MUTE_KEY) === '1';
+    let nextStepTime = 0;
+    let stepIndex = 0;
+    let schedulerTimer = null;
+
+    function playNote(freq, time, dur) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, time);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, time);
+      g.gain.linearRampToValueAtTime(0.18, time + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+      osc.connect(g).connect(masterGain);
+      osc.start(time);
+      osc.stop(time + dur + 0.05);
+    }
+
+    function playHit(time, dum) {
+      const dur = dum ? 0.16 : 0.07;
+      const size = Math.floor(ctx.sampleRate * dur);
+      const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < size; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / size, dum ? 2 : 4);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = dum ? 'lowpass' : 'highpass';
+      filter.frequency.value = dum ? 300 : 2500;
+      const g = ctx.createGain();
+      g.gain.value = dum ? 0.45 : 0.2;
+      src.connect(filter).connect(g).connect(masterGain);
+      src.start(time);
+    }
+
+    function scheduler() {
+      while (nextStepTime < ctx.currentTime + 0.2) {
+        const deg = MELODY[stepIndex % MELODY.length];
+        if (deg >= 0) playNote(SCALE[deg], nextStepTime, STEP_DUR * 1.4);
+        if (stepIndex % 8 === 0) playHit(nextStepTime, true);
+        else if (stepIndex % 4 === 0) playHit(nextStepTime, false);
+        nextStepTime += STEP_DUR;
+        stepIndex++;
+      }
+    }
+
+    function start() {
+      if (started) return;
+      started = true;
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = ctx.createGain();
+      masterGain.gain.value = muted ? 0 : 0.35;
+      masterGain.connect(ctx.destination);
+
+      const drone = ctx.createOscillator();
+      drone.type = 'sine';
+      drone.frequency.value = SCALE[0] / 2;
+      const droneGain = ctx.createGain();
+      droneGain.gain.value = 0.07;
+      drone.connect(droneGain).connect(masterGain);
+      drone.start();
+
+      nextStepTime = ctx.currentTime + 0.1;
+      stepIndex = 0;
+      schedulerTimer = setInterval(scheduler, 100);
+    }
+
+    function resume() {
+      if (ctx && ctx.state === 'suspended') ctx.resume();
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
+      if (masterGain) masterGain.gain.setTargetAtTime(muted ? 0 : 0.35, ctx.currentTime, 0.05);
+    }
+
+    return { start, resume, toggleMute, isMuted: () => muted };
+  })();
+
+  function isMuteButtonHit(lx, ly) {
+    return lx >= MUTE_BTN.x && lx <= MUTE_BTN.x + MUTE_BTN.w &&
+           ly >= MUTE_BTN.y && ly <= MUTE_BTN.y + MUTE_BTN.h;
+  }
 
   let state = 'start'; // start | playing | gameover
   let player, pipes, score, best, spawnTimer, groundOffset, lastTime;
@@ -69,12 +170,24 @@
 
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    Music.start();
+    Music.resume();
+
+    const rect = canvas.getBoundingClientRect();
+    const lx = (e.clientX - rect.left) * (LW / rect.width);
+    const ly = (e.clientY - rect.top) * (LH / rect.height);
+    if (isMuteButtonHit(lx, ly)) {
+      Music.toggleMute();
+      return;
+    }
     flap();
   }, { passive: false });
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp') {
       e.preventDefault();
+      Music.start();
+      Music.resume();
       flap();
     }
   });
@@ -390,6 +503,46 @@
     }
   }
 
+  function drawMuteButton() {
+    const { x, y, w, h } = MUTE_BTN;
+    const cx = x + w / 2 - 5;
+    const cy = y + h / 2;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.beginPath();
+    ctx.arc(x + w / 2, cy, w / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 9, cy - 5);
+    ctx.lineTo(cx - 4, cy - 5);
+    ctx.lineTo(cx + 4, cy - 11);
+    ctx.lineTo(cx + 4, cy + 11);
+    ctx.lineTo(cx - 4, cy + 5);
+    ctx.lineTo(cx - 9, cy + 5);
+    ctx.closePath();
+    ctx.fill();
+
+    if (Music.isMuted()) {
+      ctx.beginPath();
+      ctx.moveTo(cx + 9, cy - 6); ctx.lineTo(cx + 17, cy + 6);
+      ctx.moveTo(cx + 17, cy - 6); ctx.lineTo(cx + 9, cy + 6);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(cx + 8, cy, 4, -0.6, 0.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx + 8, cy, 8, -0.7, 0.7);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function draw() {
     drawSky();
     drawDistantDunes();
@@ -397,6 +550,7 @@
     drawGround();
     drawPlayer();
     drawHUD();
+    drawMuteButton();
   }
 
   function loop(timestamp) {
