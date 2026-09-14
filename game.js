@@ -32,8 +32,15 @@
   const PIPE_SPEED = 115;    // px/s
   const PIPE_INTERVAL = 1750; // ms
   const PLAYER_X = LW * 0.28;
-  const HALF_W = 34;
-  const HALF_H = 24;
+  // Deliberately smaller than the sprite's full bounding box: drawPlayer()
+  // rotates the camel+rider up to -0.3..+0.5 rad depending on vertical
+  // speed, but this hitbox doesn't rotate with it, and a box sized to the
+  // sprite's full extent (including the far reach of the neck/legs/
+  // headdress) caused "unfair" deaths where the tilted sprite visually
+  // missed a pipe the static box still overlapped. Sized instead to sit
+  // inside the sprite's solid core (camel body + rider torso).
+  const HALF_W = 26;
+  const HALF_H = 18;
   const HORIZON_Y = LH - GROUND_H - 30;
   const SKY_SCALE = 2.3;      // blows the per-city skyline drawings up to fill most of the screen
   const SKY_SPEED = 46;       // px/s on-screen scroll speed for the near skyline layer
@@ -46,6 +53,8 @@
   const MUTE_BTN = { x: LW - 46, y: 10, w: 36, h: 36 };
   const BACK_BTN = { x: 10, y: 10, w: 36, h: 36 };
   const SHARE_BTN = { x: LW / 2 - 75, y: LH * 0.58 - 19, w: 150, h: 38 };
+  const LEADERBOARD_BTN = { x: 10, y: 54, w: 36, h: 36 };
+  const CACTUS_BONUS = 5; // desert-only: bonus points for flying through a cactus (never lethal)
   const LOGOUT_LABEL = { x: LW / 2 - 90, y: LH - 26, w: 180, h: 20 };
 
   // ---- Procedurally generated background music (no audio files) ----
@@ -236,10 +245,15 @@
   let selectedCity, selectedCharacter, currentBiome;
   let player, pipes, score, best, spawnTimer, groundOffset, skyScrollX, skyScrollXFar, lastTime;
   let flapAnim = 0;
+  let popups; // floating "+N" bonus-score text, e.g. from collecting a cactus
+  let leaderboardEntries = null;
+  let leaderboardLoading = false;
+  let leaderboardError = null;
 
   function resetGame() {
     player = { y: LH * 0.42, vy: 0 };
     pipes = [];
+    popups = [];
     score = 0;
     spawnTimer = 0;
     groundOffset = 0;
@@ -351,6 +365,20 @@
     state = 'start';
   }
 
+  function openLeaderboard() {
+    state = 'leaderboard';
+    leaderboardEntries = null;
+    leaderboardError = null;
+    leaderboardLoading = true;
+    CamelAuth.getLeaderboard(20).then(list => {
+      leaderboardEntries = list;
+      leaderboardLoading = false;
+    }).catch(() => {
+      leaderboardError = 'Could not load the leaderboard right now';
+      leaderboardLoading = false;
+    });
+  }
+
   function flap() {
     if (state === 'start') {
       state = 'playing';
@@ -381,7 +409,13 @@
       ];
     }
     if (state === 'start') {
-      return [{ rect: BACK_BTN, onTap: () => { state = 'citySelect'; } }];
+      return [
+        { rect: BACK_BTN, onTap: () => { state = 'citySelect'; } },
+        { rect: LEADERBOARD_BTN, onTap: () => openLeaderboard() },
+      ];
+    }
+    if (state === 'leaderboard') {
+      return [{ rect: BACK_BTN, onTap: () => { state = 'start'; } }];
     }
     if (state === 'gameover') {
       return [{ rect: SHARE_BTN, onTap: () => shareScore() }];
@@ -427,7 +461,7 @@
   function spawnPipe() {
     const margin = 70;
     const gapY = margin + Math.random() * (LH - GROUND_H - margin * 2 - GAP_H) + GAP_H / 2;
-    pipes.push({ x: LW + PIPE_W, gapY, scored: false, accent: Math.random() < 0.5 });
+    pipes.push({ x: LW + PIPE_W, gapY, scored: false, accent: Math.random() < 0.5, cactusCollected: false });
   }
 
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -461,6 +495,16 @@
         dead = true;
       }
 
+      if (currentBiome === 'desert' && p.accent && !p.cactusCollected) {
+        const cactusGroundY = botY - 18;
+        if (rectsOverlap(PLAYER_X - HALF_W, player.y - HALF_H, HALF_W * 2, HALF_H * 2,
+            p.x + PIPE_W / 2 - 16, cactusGroundY - 34, 32, 34)) {
+          p.cactusCollected = true;
+          score += CACTUS_BONUS;
+          popups.push({ x: PLAYER_X, y: player.y - HALF_H - 6, age: 0, text: `+${CACTUS_BONUS}` });
+        }
+      }
+
       if (!p.scored && p.x + PIPE_W < PLAYER_X - HALF_W) {
         p.scored = true;
         score++;
@@ -468,6 +512,9 @@
     }
 
     pipes = pipes.filter(p => p.x + PIPE_W > -10);
+
+    for (const pop of popups) pop.age += dt;
+    popups = popups.filter(pop => pop.age < 0.6);
 
     if (player.y - HALF_H < 0) {
       player.y = HALF_H;
@@ -1076,6 +1123,16 @@
     ctx.fillText(text, x, y);
   }
 
+  function drawPopups() {
+    for (const pop of popups) {
+      const t = pop.age / 0.6;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - t);
+      drawOutlinedText(pop.text, pop.x, pop.y - t * 26, 22, '#8bffb0');
+      ctx.restore();
+    }
+  }
+
   function drawCitySelectScreen() {
     drawOutlinedText('اختر مدينتك', LW / 2, 56, 26, '#ffffff');
     drawText('Choose your city', LW / 2, 84, 15, 'rgba(255,255,255,0.85)', '600');
@@ -1143,6 +1200,22 @@
     ctx.restore();
   }
 
+  function drawLeaderboardButton() {
+    const { x, y, w, h } = LEADERBOARD_BTN;
+    const cx = x + w / 2, cy = y + h / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, w / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - 8, cy + 1, 5, 7);
+    ctx.fillRect(cx - 1, cy - 5, 5, 13);
+    ctx.fillRect(cx + 6, cy - 2, 5, 10);
+    ctx.restore();
+  }
+
   function drawHUD() {
     if (state === 'playing') {
       drawOutlinedText(String(score), LW / 2, 70, 48, '#ffffff');
@@ -1179,6 +1252,56 @@
     ctx.fillStyle = 'rgba(255, 224, 138, 0.95)';
     ctx.fill();
     drawText('Share Score · شارك', x + w / 2, y + h / 2, 13, '#3a1f4d', '700');
+  }
+
+  function drawLeaderboardScreen() {
+    drawOutlinedText('لوحة المتصدرين', LW / 2, 56, 26, '#ffffff');
+    drawText('Leaderboard', LW / 2, 84, 15, 'rgba(255,255,255,0.85)', '600');
+
+    const top = 210, rowH = 24, listW = 320, x = LW / 2 - listW / 2;
+
+    if (leaderboardLoading) {
+      drawText('Loading…', LW / 2, top + 40, 15, 'rgba(255,255,255,0.85)');
+      return;
+    }
+    if (leaderboardError) {
+      drawText(leaderboardError, LW / 2, top + 40, 14, 'rgba(255,220,220,0.9)');
+      return;
+    }
+    if (!leaderboardEntries || leaderboardEntries.length === 0) {
+      const msg = CamelAuth.isAvailable()
+        ? 'No scores yet — be the first!'
+        : 'Sign up to start a leaderboard';
+      drawText(msg, LW / 2, top + 40, 15, 'rgba(255,255,255,0.85)');
+      return;
+    }
+
+    const myName = CamelAuth.currentUsername();
+    leaderboardEntries.forEach((entry, i) => {
+      const y = top + i * rowH;
+      const mine = entry.username && entry.username === myName;
+      if (mine) {
+        roundRectPath(x - 8, y - rowH / 2 + 3, listW + 16, rowH - 4, 8);
+        ctx.fillStyle = 'rgba(255, 224, 138, 0.18)';
+        ctx.fill();
+      }
+      const color = mine ? '#ffe08a' : 'rgba(255,255,255,0.9)';
+      drawText(`#${i + 1}`, x + 16, y, 14, color, '700');
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.font = `600 14px "Segoe UI", Tahoma, sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(entry.username || '?', x + 44, y);
+      ctx.restore();
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.font = `700 14px "Segoe UI", Tahoma, sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(entry.bestScore || 0), x + listW, y);
+      ctx.restore();
+    });
   }
 
   function drawLogoutLabel() {
@@ -1363,6 +1486,11 @@
       drawSkyline(selectedCity);
       drawCharacterSelectScreen();
       drawBackButton();
+    } else if (state === 'leaderboard') {
+      drawHorizon(currentBiome);
+      drawSkyline(selectedCity);
+      drawLeaderboardScreen();
+      drawBackButton();
     } else {
       drawHorizon(currentBiome);
       drawSkyline(selectedCity);
@@ -1370,7 +1498,8 @@
       drawGround();
       drawPlayer();
       drawHUD();
-      if (state === 'start') drawBackButton();
+      drawPopups();
+      if (state === 'start') { drawBackButton(); drawLeaderboardButton(); }
       if (state === 'gameover') drawShareButton();
     }
 

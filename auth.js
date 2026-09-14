@@ -101,9 +101,25 @@
         { bestScore: score, updatedAt: Date.now() },
         { merge: true }
       );
+      // Separate, publicly-readable doc (username + score only, no email) so
+      // the leaderboard can list other players without exposing anyone's
+      // private users/{uid} doc.
+      await db.collection('leaderboard').doc(currentUser.uid).set(
+        { username: currentUser.displayName, bestScore: score, updatedAt: Date.now() },
+        { merge: true }
+      );
     } catch (e) {
       // Offline or rules issue — best score still lives in localStorage as a fallback.
     }
+  }
+
+  async function getLeaderboard(limit) {
+    if (!db) return [];
+    const snap = await db.collection('leaderboard')
+      .orderBy('bestScore', 'desc')
+      .limit(limit || 20)
+      .get();
+    return snap.docs.map(doc => doc.data());
   }
 
   window.CamelAuth = {
@@ -117,5 +133,6 @@
     resetPassword,
     getBestScore,
     syncBestScore,
+    getLeaderboard,
   };
 })();
