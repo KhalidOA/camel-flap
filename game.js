@@ -52,7 +52,10 @@
   const CHARACTER_KEY = 'camelJumpCharacter';
   const MUTE_BTN = { x: LW - 46, y: 10, w: 36, h: 36 };
   const BACK_BTN = { x: 10, y: 10, w: 36, h: 36 };
-  const SHARE_BTN = { x: LW / 2 - 75, y: LH * 0.58 - 19, w: 150, h: 38 };
+  const GAMEOVER_CARD = { x: 40, y: 160, w: 320, h: 258 };
+  const GAMEOVER_CHIP1 = { x: 60, y: 252, w: 132, h: 78 };
+  const GAMEOVER_CHIP2 = { x: 208, y: 252, w: 132, h: 78 };
+  const SHARE_BTN = { x: 60, y: 348, w: 280, h: 46 };
   const CACTUS_BONUS = 5; // desert-only: bonus points for flying through a cactus (never lethal)
 
   // ---- Organic design tokens (imported from the Camel Jump design canvas) ----
@@ -233,17 +236,17 @@
     desert: {
       pipeShape: (x, isTop, edgeY) => duneShape(x, isTop, edgeY),
       accent: (cx, groundY) => drawCactus(cx, groundY),
-      gradientStops: [[0, '#d9a066'], [0.5, '#f0c98a'], [1, '#c98a4f']],
+      gradientStops: [[0, CJ_ACCENT], [0.5, '#f0c98a'], [1, CJ_ACCENT_DARK]],
     },
     coastal: {
       pipeShape: (x, isTop, edgeY) => palmPipeShape(x, isTop, edgeY),
       accent: (cx, groundY) => drawPalmTree(cx, groundY),
-      gradientStops: [[0, '#4a8a86'], [0.5, '#6fb3ad'], [1, '#3d726e']],
+      gradientStops: [[0, '#4f7d78'], [0.5, '#7ab0a3'], [1, '#3a5f58']],
     },
     hill: {
       pipeShape: (x, isTop, edgeY) => cedarPipeShape(x, isTop, edgeY),
       accent: null,
-      gradientStops: [[0, '#5c6b4a'], [0.5, '#7d8f68'], [1, '#4a5a3c']],
+      gradientStops: [[0, '#4a5a3c'], [0.5, CJ_ACCENT_2], [1, '#3d4a30']],
     },
   };
 
@@ -267,6 +270,9 @@
   let state = 'authCheck'; // authCheck | auth | home | playing | gameover | leaderboard | howto | profile
   let selectedCity, selectedCharacter, currentBiome;
   let player, pipes, score, best, spawnTimer, groundOffset, skyScrollX, skyScrollXFar, lastTime;
+  let speedRamp, hardModeTriggered;
+  const HARD_MODE_SCORE = 100;
+  const HARD_MODE_BOOST = 0.35; // +35% speed once the ramp is fully eased in
   let flapAnim = 0;
   let popups; // floating "+N" bonus-score text, e.g. from collecting a cactus
   let leaderboardEntries = null;
@@ -286,6 +292,8 @@
     skyScrollX = 0;
     skyScrollXFar = 0;
     flapAnim = 0;
+    speedRamp = 0;
+    hardModeTriggered = false;
   }
 
   best = Number(localStorage.getItem(BEST_KEY) || 0);
@@ -522,6 +530,14 @@
     if (player.vy > MAX_FALL) player.vy = MAX_FALL;
     player.y += player.vy * dt;
 
+    const hardMode = score >= HARD_MODE_SCORE;
+    speedRamp += ((hardMode ? 1 : 0) - speedRamp) * Math.min(1, dt * 2);
+    const speedMul = 1 + speedRamp * HARD_MODE_BOOST;
+    if (hardMode && !hardModeTriggered) {
+      hardModeTriggered = true;
+      popups.push({ x: PLAYER_X, y: player.y - HALF_H - 6, age: 0, text: 'أسرع! · Faster!' });
+    }
+
     spawnTimer += dt * 1000;
     if (spawnTimer >= PIPE_INTERVAL) {
       spawnTimer = 0;
@@ -532,7 +548,7 @@
     let dead = false;
 
     for (const p of pipes) {
-      p.x -= PIPE_SPEED * dt;
+      p.x -= PIPE_SPEED * speedMul * dt;
 
       const topH = p.gapY - GAP_H / 2;
       const botY = p.gapY + GAP_H / 2;
@@ -582,9 +598,9 @@
       }
     }
 
-    groundOffset = (groundOffset + PIPE_SPEED * dt) % 40;
-    skyScrollX = (skyScrollX + SKY_SPEED * dt) % (BASE_SKYLINE_W * SKY_SCALE);
-    skyScrollXFar = (skyScrollXFar + SKY_SPEED_FAR * dt) % (BASE_SKYLINE_W * SKY_SCALE);
+    groundOffset = (groundOffset + PIPE_SPEED * speedMul * dt) % 40;
+    skyScrollX = (skyScrollX + SKY_SPEED * speedMul * dt) % (BASE_SKYLINE_W * SKY_SCALE);
+    skyScrollXFar = (skyScrollXFar + SKY_SPEED_FAR * speedMul * dt) % (BASE_SKYLINE_W * SKY_SCALE);
     if (flapAnim > 0) flapAnim = Math.max(0, flapAnim - dt * 3);
   }
 
@@ -603,20 +619,20 @@
 
   function drawSky() {
     const g = ctx.createLinearGradient(0, 0, 0, LH);
-    g.addColorStop(0, '#ff9a56');
-    g.addColorStop(0.45, '#ff7096');
-    g.addColorStop(1, '#ffd9a0');
+    g.addColorStop(0, '#e8935c');
+    g.addColorStop(0.45, '#f2b57d');
+    g.addColorStop(1, '#f8e7cc');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, LW, LH);
 
-    ctx.fillStyle = 'rgba(255, 244, 214, 0.9)';
+    ctx.fillStyle = 'rgba(255, 250, 238, 0.85)';
     ctx.beginPath();
     ctx.arc(LW * 0.78, LH * 0.22, 46, 0, Math.PI * 2);
     ctx.fill();
   }
 
   function drawHorizon(biome) {
-    const colors = { desert: 'rgba(150, 70, 90, 0.35)', coastal: 'rgba(20, 90, 120, 0.35)', hill: 'rgba(90, 100, 70, 0.35)' };
+    const colors = { desert: 'rgba(140, 65, 50, 0.3)', coastal: 'rgba(45, 90, 85, 0.3)', hill: 'rgba(80, 90, 60, 0.3)' };
     const amps = { desert: 14, coastal: 8, hill: 20 };
     ctx.fillStyle = colors[biome] || colors.desert;
     const amp = amps[biome] || 14;
@@ -975,9 +991,9 @@
 
   function drawGround() {
     const y = LH - GROUND_H;
-    ctx.fillStyle = '#e0a85f';
+    ctx.fillStyle = '#dba668';
     ctx.fillRect(0, y, LW, GROUND_H);
-    ctx.fillStyle = '#c98a4f';
+    ctx.fillStyle = '#c2884f';
     for (let x = -40; x < LW + 40; x += 40) {
       ctx.beginPath();
       ctx.moveTo(x - groundOffset, y);
@@ -986,7 +1002,7 @@
       ctx.closePath();
       ctx.fill();
     }
-    ctx.fillStyle = '#b97a3f';
+    ctx.fillStyle = CJ_ACCENT_DARK;
     ctx.fillRect(0, y, LW, 4);
   }
 
@@ -1338,22 +1354,38 @@
     }
 
     if (state === 'gameover') {
-      ctx.fillStyle = 'rgba(30, 15, 20, 0.45)';
+      ctx.fillStyle = 'rgba(30, 20, 10, 0.45)';
       ctx.fillRect(0, 0, LW, LH);
-      drawOutlinedText('انتهت اللعبة', LW / 2, LH * 0.36, 30, '#ffffff');
-      drawText('Game Over', LW / 2, LH * 0.36 + 30, 16, 'rgba(255,255,255,0.9)', '600');
-      drawText(`Score: ${score}`, LW / 2, LH * 0.5, 22, '#ffffff');
-      drawText(`Best: ${best}`, LW / 2, LH * 0.5 + 30, 16, 'rgba(255,255,255,0.85)', '400');
-      drawText('tap to play again', LW / 2, LH * 0.68, 15, 'rgba(255,255,255,0.85)', '400');
+
+      roundRectPath(GAMEOVER_CARD.x, GAMEOVER_CARD.y, GAMEOVER_CARD.w, GAMEOVER_CARD.h, 28);
+      ctx.fillStyle = CJ_BG;
+      ctx.fill();
+
+      drawOutlinedText('انتهت اللعبة', LW / 2, GAMEOVER_CARD.y + 44, 26, CJ_TEXT);
+      drawText('Game Over', LW / 2, GAMEOVER_CARD.y + 70, 13, 'rgba(32,30,29,0.55)', '600');
+
+      [[GAMEOVER_CHIP1, 'النتيجة', String(score)], [GAMEOVER_CHIP2, 'الأفضل', String(best)]].forEach(([chip, label, value]) => {
+        roundRectPath(chip.x, chip.y, chip.w, chip.h, 20);
+        ctx.fillStyle = CJ_SURFACE;
+        ctx.fill();
+        drawText(label, chip.x + chip.w / 2, chip.y + 22, 11, 'rgba(32,30,29,0.55)', '500');
+        ctx.font = `30px ${FONT_HEAD}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = CJ_TEXT;
+        ctx.fillText(value, chip.x + chip.w / 2, chip.y + 54);
+      });
+
+      drawText('اضغط للمتابعة · Tap to continue', LW / 2, GAMEOVER_CARD.y + GAMEOVER_CARD.h + 34, 14, 'rgba(255,246,232,0.9)', '600');
     }
   }
 
   function drawShareButton() {
     const { x, y, w, h } = SHARE_BTN;
-    roundRectPath(x, y, w, h, 19);
-    ctx.fillStyle = 'rgba(255, 224, 138, 0.95)';
+    roundRectPath(x, y, w, h, 999);
+    ctx.fillStyle = CJ_ACCENT;
     ctx.fill();
-    drawText('Share Score · شارك', x + w / 2, y + h / 2, 13, '#3a1f4d', '700');
+    drawText('مشاركة النتيجة · Share Score', x + w / 2, y + h / 2, 14, CJ_BG, '700');
   }
 
   function drawLeaderboardScreen() {
