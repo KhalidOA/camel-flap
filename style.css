@@ -28,6 +28,23 @@ body {
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
 }
 
+/* ---- Organic design tokens (matches the Camel Jump design canvas) ---- */
+:root {
+  --cj-bg: #f5ead8;
+  --cj-surface: #ebddc5;
+  --cj-text: #201e1d;
+  --cj-accent: #c67139;
+  --cj-accent-dark: #8c491a;
+  --cj-accent-2: #7a8a5e;
+  --cj-font-head: "Caprasimo", serif;
+  --cj-font-body: "Figtree", system-ui, sans-serif;
+}
+
+@keyframes cj-bob {
+  0%, 100% { transform: translateY(0) rotate(-6deg); }
+  50% { transform: translateY(-14px) rotate(4deg); }
+}
+
 .auth-overlay[hidden] {
   display: none;
 }
@@ -38,82 +55,137 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, #ff9a56 0%, #ff7096 45%, #ffd9a0 100%);
+  background: var(--cj-bg);
   touch-action: auto;
   z-index: 10;
   padding: 24px;
+  overflow: hidden;
+  direction: rtl;
+  font-family: var(--cj-font-body);
+}
+
+.auth-blob {
+  position: absolute;
+  top: -90px;
+  right: -70px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: #ffe1d0;
+  pointer-events: none;
 }
 
 .auth-card {
+  position: relative;
   width: 100%;
   max-width: 320px;
-  background: rgba(0, 0, 0, 0.28);
-  border-radius: 16px;
-  padding: 28px 24px;
   text-align: center;
-  color: #fff;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  color: var(--cj-text);
 }
 
 .auth-card h1 {
-  font-size: 26px;
+  font-family: var(--cj-font-head);
+  font-weight: 400;
+  font-size: 32px;
   margin-bottom: 2px;
 }
 
 .auth-sub {
-  font-size: 14px;
-  opacity: 0.85;
-  margin-bottom: 20px;
+  font-family: var(--cj-font-head);
+  font-size: 15px;
+  color: var(--cj-accent-dark);
+  margin-bottom: 6px;
+  direction: ltr;
+}
+
+.auth-camel {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 10px;
+  animation: cj-bob 2.6s ease-in-out infinite;
 }
 
 .auth-input {
   width: 100%;
-  padding: 12px 14px;
+  min-height: 50px;
+  padding: 12px 16px;
   margin-bottom: 10px;
   border: none;
-  border-radius: 10px;
+  border-radius: 999px;
+  font-family: inherit;
   font-size: 15px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #2b1740;
+  text-align: right;
+  background: var(--cj-surface);
+  color: var(--cj-text);
 }
 
 .auth-input::placeholder {
-  color: #8a7f99;
+  color: rgba(32, 30, 29, 0.5);
 }
 
 .auth-error {
   min-height: 18px;
   font-size: 13px;
-  color: #ffe08a;
+  color: #b2622d;
   margin-bottom: 8px;
 }
 
 .auth-btn {
   width: 100%;
+  min-height: 50px;
   padding: 12px;
-  margin-top: 6px;
+  margin-top: 8px;
   border: none;
-  border-radius: 10px;
-  font-size: 15px;
-  font-weight: 600;
+  border-radius: 999px;
+  font-family: var(--cj-font-head);
+  font-weight: 400;
+  font-size: 16px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  background: var(--cj-surface);
+  color: var(--cj-text);
 }
 
 .auth-btn-primary {
-  background: #ffe08a;
-  color: #3a1f4d;
+  background: var(--cj-accent);
+  color: var(--cj-bg);
+}
+
+.auth-btn-secondary {
+  background: var(--cj-surface);
+  min-height: 46px;
+  font-size: 14px;
+}
+
+.auth-btn-guest {
+  background: var(--cj-text);
+  color: var(--cj-bg);
+  min-height: 54px;
+  font-size: 16px;
 }
 
 .auth-link {
   display: block;
   width: 100%;
-  margin-top: 14px;
+  margin-top: 12px;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--cj-font-body);
+  color: var(--cj-accent-dark);
   font-size: 13px;
-  text-decoration: underline;
   cursor: pointer;
+}
+
+.auth-divider {
+  height: 1px;
+  background: rgba(32, 30, 29, 0.12);
+  margin: 16px 0;
+}
+
+.auth-guest-note {
+  font-family: var(--cj-font-body);
+  font-size: 11.5px;
+  color: rgba(32, 30, 29, 0.55);
+  text-align: center;
+  margin-top: 10px;
+  line-height: 1.6;
 }

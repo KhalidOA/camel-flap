@@ -53,9 +53,30 @@
   const MUTE_BTN = { x: LW - 46, y: 10, w: 36, h: 36 };
   const BACK_BTN = { x: 10, y: 10, w: 36, h: 36 };
   const SHARE_BTN = { x: LW / 2 - 75, y: LH * 0.58 - 19, w: 150, h: 38 };
-  const LEADERBOARD_BTN = { x: 10, y: 54, w: 36, h: 36 };
   const CACTUS_BONUS = 5; // desert-only: bonus points for flying through a cactus (never lethal)
-  const LOGOUT_LABEL = { x: LW / 2 - 90, y: LH - 26, w: 180, h: 20 };
+
+  // ---- Organic design tokens (imported from the Camel Jump design canvas) ----
+  const CJ_BG = '#f5ead8';
+  const CJ_SURFACE = '#ebddc5';
+  const CJ_TEXT = '#201e1d';
+  const CJ_ACCENT = '#c67139';
+  const CJ_ACCENT_DARK = '#8c491a';
+  const CJ_ACCENT_2 = '#7a8a5e';
+  const FONT_HEAD = '"Caprasimo", serif';
+  const FONT_BODY = '"Figtree", system-ui, sans-serif';
+
+  // ---- Home screen layout (city + character + play, all on one screen) ----
+  const PROFILE_BTN = { x: 300, y: 12, w: 40, h: 40 };
+  const PLAY_BTN = { x: 22, y: 572, w: 356, h: 64 };
+  const LEADERBOARD_BTN = { x: 22, y: 646, w: 172, h: 40 };
+  const HOWTO_BTN = { x: 206, y: 646, w: 172, h: 40 };
+
+  // ---- Profile screen rows (fixed positions; the sign-up CTA only occupies
+  // this space for guests, so nothing else needs to reflow around it) ----
+  const PROFILE_SIGNUP_BTN = { x: 24, y: 462, w: 352, h: 44 };
+  const PROFILE_SOUND_ROW = { x: 24, y: 546, w: 352, h: 44 };
+  const PROFILE_HOWTO_ROW = { x: 24, y: 594, w: 352, h: 44 };
+  const PROFILE_LOGOUT_ROW = { x: 24, y: 642, w: 352, h: 44 };
 
   // ---- Procedurally generated background music (no audio files) ----
   // Same looping rhythmic phrase for every city, but each city transposes it
@@ -226,8 +247,10 @@
     },
   };
 
-  // ---- Menu layout (computed once) ----
-  const CITY_GRID = { top: 150, cardW: 168, cardH: 114, colGap: 16, rowGap: 14, sideMargin: 24 };
+  // ---- Home screen layout (computed once): city grid + character row share
+  // one screen now, so both are shrunk compared to when each had its own
+  // full screen. ----
+  const CITY_GRID = { top: 110, cardW: 168, cardH: 64, colGap: 16, rowGap: 8, sideMargin: 24 };
   const cityCardRects = CITIES.map((c, i) => {
     const col = i % 2;
     const row = Math.floor(i / 2);
@@ -238,10 +261,10 @@
       h: CITY_GRID.cardH,
     };
   });
-  const manCardRect = { x: LW / 2 - 170, y: 220, w: 160, h: 260 };
-  const womanCardRect = { x: LW / 2 + 10, y: 220, w: 160, h: 260 };
+  const manCardRect = { x: 22, y: 424, w: 173, h: 70 };
+  const womanCardRect = { x: 205, y: 424, w: 173, h: 70 };
 
-  let state = 'authCheck'; // authCheck | auth | citySelect | characterSelect | start | playing | gameover
+  let state = 'authCheck'; // authCheck | auth | home | playing | gameover | leaderboard | howto | profile
   let selectedCity, selectedCharacter, currentBiome;
   let player, pipes, score, best, spawnTimer, groundOffset, skyScrollX, skyScrollXFar, lastTime;
   let flapAnim = 0;
@@ -249,6 +272,9 @@
   let leaderboardEntries = null;
   let leaderboardLoading = false;
   let leaderboardError = null;
+  let myRank = null;
+  let faqOpenIndex = null;
+  let faqRects = [];
 
   function resetGame() {
     player = { y: LH * 0.42, vy: 0 };
@@ -288,7 +314,7 @@
 
   function enterGame() {
     authOverlay.hidden = true;
-    state = 'citySelect';
+    state = 'home';
   }
 
   async function afterSignedIn() {
@@ -356,13 +382,18 @@
     currentBiome = city ? city.biome : 'desert';
     Music.setCity(key);
     localStorage.setItem(CITY_KEY, key);
-    state = 'characterSelect';
   }
 
   function selectCharacter(value) {
     selectedCharacter = value;
     localStorage.setItem(CHARACTER_KEY, value);
-    state = 'start';
+  }
+
+  function refreshMyRank() {
+    myRank = null;
+    if (CamelAuth.isLoggedIn()) {
+      CamelAuth.getMyRank(best).then(r => { myRank = r; }).catch(() => {});
+    }
   }
 
   function openLeaderboard() {
@@ -370,6 +401,7 @@
     leaderboardEntries = null;
     leaderboardError = null;
     leaderboardLoading = true;
+    refreshMyRank();
     CamelAuth.getLeaderboard(20).then(list => {
       leaderboardEntries = list;
       leaderboardLoading = false;
@@ -379,43 +411,58 @@
     });
   }
 
+  function openProfile() {
+    state = 'profile';
+    refreshMyRank();
+  }
+
+  function startRun() {
+    resetGame();
+    state = 'playing';
+    player.vy = FLAP_VELOCITY;
+    flapAnim = 1;
+  }
+
   function flap() {
-    if (state === 'start') {
-      state = 'playing';
-      player.vy = FLAP_VELOCITY;
-      flapAnim = 1;
-    } else if (state === 'playing') {
+    if (state === 'playing') {
       player.vy = FLAP_VELOCITY;
       flapAnim = 1;
     } else if (state === 'gameover') {
       resetGame();
-      state = 'start';
+      state = 'home';
     }
   }
 
   function getActiveButtons() {
-    if (state === 'citySelect') {
+    if (state === 'home') {
       const buttons = CITIES.map((c, i) => ({ rect: cityCardRects[i], onTap: () => selectCity(c.key) }));
-      if (CamelAuth.isLoggedIn()) {
-        buttons.push({ rect: LOGOUT_LABEL, onTap: () => { CamelAuth.logout(); } });
+      buttons.push({ rect: manCardRect, onTap: () => selectCharacter('man') });
+      buttons.push({ rect: womanCardRect, onTap: () => selectCharacter('woman') });
+      buttons.push({ rect: PLAY_BTN, onTap: () => startRun() });
+      buttons.push({ rect: LEADERBOARD_BTN, onTap: () => openLeaderboard() });
+      buttons.push({ rect: HOWTO_BTN, onTap: () => { state = 'howto'; } });
+      buttons.push({ rect: PROFILE_BTN, onTap: () => openProfile() });
+      return buttons;
+    }
+    if (state === 'leaderboard' || state === 'howto') {
+      const buttons = [{ rect: BACK_BTN, onTap: () => { state = 'home'; } }];
+      if (state === 'howto') {
+        faqRects.forEach((rect, i) => {
+          buttons.push({ rect, onTap: () => { faqOpenIndex = faqOpenIndex === i ? null : i; } });
+        });
       }
       return buttons;
     }
-    if (state === 'characterSelect') {
-      return [
-        { rect: manCardRect, onTap: () => selectCharacter('man') },
-        { rect: womanCardRect, onTap: () => selectCharacter('woman') },
-        { rect: BACK_BTN, onTap: () => { state = 'citySelect'; } },
-      ];
-    }
-    if (state === 'start') {
-      return [
-        { rect: BACK_BTN, onTap: () => { state = 'citySelect'; } },
-        { rect: LEADERBOARD_BTN, onTap: () => openLeaderboard() },
-      ];
-    }
-    if (state === 'leaderboard') {
-      return [{ rect: BACK_BTN, onTap: () => { state = 'start'; } }];
+    if (state === 'profile') {
+      const buttons = [{ rect: BACK_BTN, onTap: () => { state = 'home'; } }];
+      buttons.push({ rect: PROFILE_SOUND_ROW, onTap: () => Music.toggleMute() });
+      buttons.push({ rect: PROFILE_HOWTO_ROW, onTap: () => { state = 'howto'; } });
+      if (CamelAuth.isLoggedIn()) {
+        buttons.push({ rect: PROFILE_LOGOUT_ROW, onTap: () => CamelAuth.logout() });
+      } else if (CamelAuth.isAvailable()) {
+        buttons.push({ rect: PROFILE_SIGNUP_BTN, onTap: () => showAuthOverlay() });
+      }
+      return buttons;
     }
     if (state === 'gameover') {
       return [{ rect: SHARE_BTN, onTap: () => shareScore() }];
@@ -444,7 +491,7 @@
       }
     }
 
-    if (state === 'start' || state === 'playing' || state === 'gameover') {
+    if (state === 'playing' || state === 'gameover') {
       flap();
     }
   }, { passive: false });
@@ -530,7 +577,8 @@
       if (score > best) {
         best = score;
         localStorage.setItem(BEST_KEY, String(best));
-        CamelAuth.syncBestScore(best);
+        const cityObj = CITIES.find(c => c.key === selectedCity);
+        CamelAuth.syncBestScore(best, cityObj ? cityObj.nameAr : null);
       }
     }
 
@@ -543,6 +591,7 @@
   // ---------------- Drawing ----------------
 
   function roundRectPath(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -1106,21 +1155,69 @@
 
   function drawText(text, x, y, size, color, weight = '700') {
     ctx.fillStyle = color;
-    ctx.font = `${weight} ${size}px "Segoe UI", Tahoma, sans-serif`;
+    ctx.font = `${weight} ${size}px ${FONT_BODY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, x, y);
   }
 
+  function drawTextAligned(text, x, y, size, color, weight, align) {
+    ctx.save();
+    ctx.font = `${weight || '700'} ${size}px ${FONT_BODY}`;
+    ctx.textAlign = align || 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  function wrapText(text, maxWidth, font) {
+    ctx.font = font;
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (line && ctx.measureText(test).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
   function drawOutlinedText(text, x, y, size, color) {
-    ctx.font = `800 ${size}px "Segoe UI", Tahoma, sans-serif`;
+    ctx.font = `${size}px ${FONT_HEAD}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.lineWidth = size * 0.12;
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = size * 0.1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
     ctx.strokeText(text, x, y);
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
+  }
+
+  function drawGearIcon(cx, cy, r, color) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = color;
+    for (let i = 0; i < 8; i++) {
+      ctx.save();
+      ctx.rotate((i * Math.PI) / 4);
+      ctx.fillRect(-2, -r, 4, r * 0.35);
+      ctx.restore();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = CJ_SURFACE;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawPopups() {
@@ -1133,50 +1230,83 @@
     }
   }
 
-  function drawCitySelectScreen() {
-    drawOutlinedText('اختر مدينتك', LW / 2, 56, 26, '#ffffff');
-    drawText('Choose your city', LW / 2, 84, 15, 'rgba(255,255,255,0.85)', '600');
+  // Card background used throughout the new UI: a rounded rect, highlighted
+  // gold when it's the currently-selected option.
+  function drawOptionCard(r, selected, radius) {
+    roundRectPath(r.x, r.y, r.w, r.h, radius);
+    ctx.fillStyle = selected ? '#ffe08a' : CJ_SURFACE;
+    ctx.fill();
+    if (selected) {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = CJ_ACCENT;
+      ctx.stroke();
+    }
+  }
+
+  function drawHomeHeader() {
+    const name = CamelAuth.currentUsername();
+    const label = name || 'ضيف';
+    const initial = name ? name[0].toUpperCase() : '؟';
+
+    ctx.beginPath();
+    ctx.arc(34, 42, 22, 0, Math.PI * 2);
+    ctx.fillStyle = CJ_ACCENT;
+    ctx.fill();
+    drawTextAligned(initial, 34, 42, 18, CJ_BG, '700', 'center');
+
+    drawTextAligned(label, 64, 32, 15, CJ_TEXT, '700', 'left');
+    drawTextAligned(`أفضل نتيجة · Best ${best}`, 64, 50, 11.5, 'rgba(32,30,29,0.55)', '500', 'left');
+
+    ctx.beginPath();
+    ctx.arc(PROFILE_BTN.x + PROFILE_BTN.w / 2, PROFILE_BTN.y + PROFILE_BTN.h / 2, PROFILE_BTN.w / 2, 0, Math.PI * 2);
+    ctx.fillStyle = CJ_SURFACE;
+    ctx.fill();
+    drawGearIcon(PROFILE_BTN.x + PROFILE_BTN.w / 2, PROFILE_BTN.y + PROFILE_BTN.h / 2, 10, CJ_TEXT);
+  }
+
+  function drawHomeScreen() {
+    drawTextAligned('اختر مدينتك', 24, 96, 17, CJ_TEXT, '700', 'left');
+    drawTextAligned('Choose your city', LW - 24, 96, 11.5, 'rgba(32,30,29,0.5)', '500', 'right');
 
     CITIES.forEach((c, i) => {
       const r = cityCardRects[i];
-      const selected = c.key === selectedCity;
-      roundRectPath(r.x, r.y, r.w, r.h, 12);
-      ctx.fillStyle = selected ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.28)';
-      ctx.fill();
-      ctx.lineWidth = selected ? 3 : 1;
-      ctx.strokeStyle = selected ? '#ffe08a' : 'rgba(255,255,255,0.3)';
-      ctx.stroke();
-
-      drawText(c.nameAr, r.x + r.w / 2, r.y + r.h / 2 - 12, 18, '#ffffff', '700');
-      drawText(c.nameEn, r.x + r.w / 2, r.y + r.h / 2 + 14, 12, 'rgba(255,255,255,0.85)', '500');
+      drawOptionCard(r, c.key === selectedCity, 14);
+      drawText(c.nameAr, r.x + r.w / 2, r.y + r.h / 2 - 10, 15, CJ_TEXT, '700');
+      drawText(`${c.nameEn} · ${c.biome}`, r.x + r.w / 2, r.y + r.h / 2 + 12, 10.5, 'rgba(32,30,29,0.55)', '500');
     });
-  }
 
-  function drawCharacterCard(r, key, nameAr, nameEn) {
-    const selected = selectedCharacter === key;
-    roundRectPath(r.x, r.y, r.w, r.h, 14);
-    ctx.fillStyle = selected ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.28)';
+    drawTextAligned('اختر شخصيتك', 24, 406, 17, CJ_TEXT, '700', 'left');
+    drawTextAligned('Choose your character', LW - 24, 406, 11.5, 'rgba(32,30,29,0.5)', '500', 'right');
+
+    [[manCardRect, 'man', 'رجل', 'Man'], [womanCardRect, 'woman', 'امرأة', 'Woman']].forEach(([r, key, nameAr, nameEn]) => {
+      drawOptionCard(r, selectedCharacter === key, 18);
+      ctx.save();
+      ctx.translate(r.x + r.w / 2 - 24, r.y + r.h / 2);
+      ctx.scale(1.15, 1.15);
+      if (key === 'woman') drawRiderWoman(); else drawRiderMan();
+      ctx.restore();
+      drawTextAligned(nameAr, r.x + r.w - 16, r.y + r.h / 2 - 9, 14, CJ_TEXT, '700', 'right');
+      drawTextAligned(nameEn, r.x + r.w - 16, r.y + r.h / 2 + 11, 11, 'rgba(32,30,29,0.55)', '500', 'right');
+    });
+
+    // bottom action bar
+    roundRectPath(0, 556, LW, LH - 556, 0);
+    ctx.fillStyle = 'rgba(245, 234, 216, 0.96)';
     ctx.fill();
-    ctx.lineWidth = selected ? 3 : 1;
-    ctx.strokeStyle = selected ? '#ffe08a' : 'rgba(255,255,255,0.3)';
-    ctx.stroke();
 
-    ctx.save();
-    ctx.translate(r.x + r.w / 2, r.y + r.h / 2 - 20);
-    ctx.scale(1.8, 1.8);
-    if (key === 'woman') drawRiderWoman(); else drawRiderMan();
-    ctx.restore();
+    roundRectPath(PLAY_BTN.x, PLAY_BTN.y, PLAY_BTN.w, PLAY_BTN.h, 999);
+    ctx.fillStyle = CJ_ACCENT;
+    ctx.fill();
+    drawText('اضغط للبدء · Play', LW / 2, PLAY_BTN.y + PLAY_BTN.h / 2, 20, CJ_BG, '700');
 
-    drawText(nameAr, r.x + r.w / 2, r.y + r.h - 46, 18, '#ffffff', '700');
-    drawText(nameEn, r.x + r.w / 2, r.y + r.h - 24, 13, 'rgba(255,255,255,0.85)', '500');
-  }
+    [[LEADERBOARD_BTN, 'لوحة المتصدرين'], [HOWTO_BTN, 'كيف تلعب']].forEach(([r, label]) => {
+      roundRectPath(r.x, r.y, r.w, r.h, 999);
+      ctx.fillStyle = CJ_SURFACE;
+      ctx.fill();
+      drawTextAligned(label, r.x + r.w / 2, r.y + r.h / 2, 13, CJ_TEXT, '600', 'center');
+    });
 
-  function drawCharacterSelectScreen() {
-    drawOutlinedText('اختر شخصيتك', LW / 2, 56, 26, '#ffffff');
-    drawText('Choose your character', LW / 2, 84, 15, 'rgba(255,255,255,0.85)', '600');
-
-    drawCharacterCard(manCardRect, 'man', 'رجل', 'Man');
-    drawCharacterCard(womanCardRect, 'woman', 'امرأة', 'Woman');
+    drawHomeHeader();
   }
 
   function drawBackButton() {
@@ -1200,39 +1330,11 @@
     ctx.restore();
   }
 
-  function drawLeaderboardButton() {
-    const { x, y, w, h } = LEADERBOARD_BTN;
-    const cx = x + w / 2, cy = y + h / 2;
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
-    ctx.beginPath();
-    ctx.arc(cx, cy, w / 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 8, cy + 1, 5, 7);
-    ctx.fillRect(cx - 1, cy - 5, 5, 13);
-    ctx.fillRect(cx + 6, cy - 2, 5, 10);
-    ctx.restore();
-  }
-
   function drawHUD() {
     if (state === 'playing') {
       drawOutlinedText(String(score), LW / 2, 70, 48, '#ffffff');
-    }
-
-    if (state === 'start') {
       const city = CITIES.find(c => c.key === selectedCity);
-      drawOutlinedText('قفزة الجمل', LW / 2, LH * 0.24, 34, '#ffffff');
-      drawText('Camel Jump', LW / 2, LH * 0.24 + 34, 18, 'rgba(255,255,255,0.9)', '600');
-      if (city) {
-        drawText(`${city.nameAr} · ${city.nameEn}`, LW / 2, LH * 0.24 + 58, 13, 'rgba(255,255,255,0.8)', '500');
-      }
-      drawText('اضغط للبدء', LW / 2, LH * 0.6, 20, '#ffffff');
-      drawText('tap to start', LW / 2, LH * 0.6 + 26, 14, 'rgba(255,255,255,0.85)', '400');
-      if (best > 0) {
-        drawText(`Best: ${best}`, LW / 2, LH * 0.6 + 56, 14, 'rgba(255,255,255,0.85)', '400');
-      }
+      drawText(`Best ${best} · ${city ? city.nameAr : ''}`, LW / 2, 104, 13, 'rgba(255,255,255,0.9)', '600');
     }
 
     if (state === 'gameover') {
@@ -1255,60 +1357,207 @@
   }
 
   function drawLeaderboardScreen() {
-    drawOutlinedText('لوحة المتصدرين', LW / 2, 56, 26, '#ffffff');
-    drawText('Leaderboard', LW / 2, 84, 15, 'rgba(255,255,255,0.85)', '600');
+    drawOutlinedText('لوحة المتصدرين', LW / 2, 56, 26, CJ_TEXT);
+    drawText('All-time top 20', LW / 2, 84, 13, 'rgba(32,30,29,0.55)', '600');
 
-    const top = 210, rowH = 24, listW = 320, x = LW / 2 - listW / 2;
+    const top = 108, rowH = 54, listW = 352, x = LW / 2 - listW / 2;
 
     if (leaderboardLoading) {
-      drawText('Loading…', LW / 2, top + 40, 15, 'rgba(255,255,255,0.85)');
+      drawText('...جارٍ التحميل', LW / 2, top + 40, 15, 'rgba(32,30,29,0.6)');
       return;
     }
     if (leaderboardError) {
-      drawText(leaderboardError, LW / 2, top + 40, 14, 'rgba(255,220,220,0.9)');
+      drawText(leaderboardError, LW / 2, top + 40, 14, '#b2622d');
       return;
     }
     if (!leaderboardEntries || leaderboardEntries.length === 0) {
       const msg = CamelAuth.isAvailable()
-        ? 'No scores yet — be the first!'
-        : 'Sign up to start a leaderboard';
-      drawText(msg, LW / 2, top + 40, 15, 'rgba(255,255,255,0.85)');
+        ? 'لا توجد نتائج بعد — كن الأول!'
+        : 'أنشئ حساباً لبدء لوحة المتصدرين';
+      drawText(msg, LW / 2, top + 40, 14, 'rgba(32,30,29,0.6)');
       return;
     }
 
     const myName = CamelAuth.currentUsername();
-    leaderboardEntries.forEach((entry, i) => {
+    const shown = leaderboardEntries.slice(0, 8);
+    shown.forEach((entry, i) => {
       const y = top + i * rowH;
+      const h = rowH - 8;
       const mine = entry.username && entry.username === myName;
-      if (mine) {
-        roundRectPath(x - 8, y - rowH / 2 + 3, listW + 16, rowH - 4, 8);
-        ctx.fillStyle = 'rgba(255, 224, 138, 0.18)';
-        ctx.fill();
+      roundRectPath(x, y, listW, h, 20);
+      ctx.fillStyle = mine ? '#ffe08a' : CJ_SURFACE;
+      ctx.fill();
+
+      drawTextAligned(`#${i + 1}`, x + 14, y + h / 2, 12.5, CJ_ACCENT_DARK, '700', 'left');
+
+      const acx = x + 50, acy = y + h / 2;
+      ctx.beginPath();
+      ctx.arc(acx, acy, 15, 0, Math.PI * 2);
+      ctx.fillStyle = CJ_ACCENT;
+      ctx.fill();
+      drawTextAligned((entry.username || '?')[0].toUpperCase(), acx, acy, 13, CJ_BG, '700', 'center');
+
+      drawTextAligned(entry.username || '?', x + 74, y + h / 2 - 9, 14, CJ_TEXT, '700', 'left');
+      drawTextAligned(entry.city || '', x + 74, y + h / 2 + 10, 11, 'rgba(32,30,29,0.5)', '500', 'left');
+
+      drawTextAligned(String(entry.bestScore || 0), x + listW - 14, y + h / 2, 19, CJ_ACCENT_DARK, '700', 'right');
+    });
+
+    if (CamelAuth.isLoggedIn() && myRank != null) {
+      const fy = LH - 74;
+      roundRectPath(x, fy, listW, 54, 20);
+      ctx.fillStyle = '#ffe08a';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = CJ_ACCENT;
+      ctx.stroke();
+      drawTextAligned(`#${myRank}`, x + 16, fy + 27, 16, CJ_ACCENT_DARK, '700', 'left');
+      drawTextAligned(`${myName} · أنت`, x + 62, fy + 27, 14, '#402310', '700', 'left');
+      drawTextAligned(String(best), x + listW - 16, fy + 27, 19, CJ_ACCENT_DARK, '700', 'right');
+    }
+  }
+
+  // ---- How to play (new screen): a single-open accordion of real Q&A,
+  // grounded in the actual mechanics rather than the design's placeholders ----
+  const FAQ = [
+    {
+      qAr: 'كيف ألعب؟', qEn: 'How do I play?',
+      aAr: 'اضغط في أي مكان على الشاشة ليقفز الجمل. استمر بالضغط لتجنب الكثبان والعقبات.',
+      aEn: 'Tap anywhere on the screen to make the camel hop. Keep tapping to dodge the dunes and other obstacles.',
+    },
+    {
+      qAr: 'ما هي مكافأة الصبار؟', qEn: 'What does the cactus bonus do?',
+      aAr: 'في مدن الصحراء (القاهرة والرياض)، الطيران عبر الصبار يمنحك ٥ نقاط إضافية دون أي خطر.',
+      aEn: 'In desert cities (Cairo and Riyadh), flying through a cactus gives a free +5 points — never dangerous.',
+    },
+    {
+      qAr: 'هل تختلف العقبات حسب المدينة؟', qEn: 'Do obstacles change by city?',
+      aAr: 'نعم! كل مدينة تنتمي إلى بيئة مختلفة: صحراء، ساحل، أو جبل، ولكل بيئة عقباتها الخاصة.',
+      aEn: 'Yes — each city belongs to a biome (desert, coastal, or hill) with its own obstacle style: dunes, palms, or cedars.',
+    },
+    {
+      qAr: 'كيف يعمل الحساب؟', qEn: 'How do accounts work?',
+      aAr: 'يمكنك اللعب كضيف، لكن نتيجتك تُحفظ فقط على هذا الجهاز. أنشئ حساباً لحفظ نتيجتك من أي جهاز.',
+      aEn: 'You can play as a guest, but your score only saves on this device. Create an account to keep it across devices.',
+    },
+    {
+      qAr: 'كيف تُحتسب لوحة المتصدرين؟', qEn: 'How does the leaderboard work?',
+      aAr: 'تعرض لوحة المتصدرين أفضل نتيجة لكل لاعب مسجّل حول العالم، مرتبة تنازلياً.',
+      aEn: "The leaderboard shows every signed-up player's best score worldwide, ranked highest to lowest.",
+    },
+    {
+      qAr: 'هل يمكنني مشاركة نتيجتي؟', qEn: 'Can I share my score?',
+      aAr: 'بعد انتهاء الجولة، اضغط على "مشاركة النتيجة" لإنشاء صورة بنتيجتك ومشاركتها مع الأصدقاء.',
+      aEn: 'After a run ends, tap "Share Score" to create an image of your result and share it with friends.',
+    },
+  ];
+
+  function drawHowToScreen() {
+    drawOutlinedText('كيف تلعب', LW / 2, 56, 26, CJ_TEXT);
+    drawText('How to play', LW / 2, 84, 14, 'rgba(32,30,29,0.55)', '600');
+
+    faqRects = [];
+    let y = 108;
+    const w = 352, x = LW / 2 - w / 2, textW = w - 36;
+    FAQ.forEach((item, i) => {
+      const open = faqOpenIndex === i;
+      const qh = 52;
+      faqRects.push({ x, y, w, h: qh });
+
+      const arLines = open ? wrapText(item.aAr, textW, `500 12.5px ${FONT_BODY}`) : [];
+      const enLines = open ? wrapText(item.aEn, textW, `400 11px ${FONT_BODY}`) : [];
+      const answerH = arLines.length * 17 + enLines.length * 15;
+      const totalH = open ? qh + 16 + answerH : qh;
+      roundRectPath(x, y, w, totalH, 20);
+      ctx.fillStyle = CJ_SURFACE;
+      ctx.fill();
+
+      drawTextAligned(item.qAr, x + 18, y + qh / 2, 14.5, CJ_TEXT, '700', 'left');
+      drawTextAligned(open ? '−' : '+', x + w - 24, y + qh / 2, 20, CJ_ACCENT_DARK, '700', 'center');
+
+      if (open) {
+        let ty = y + qh + 16;
+        arLines.forEach(line => {
+          drawTextAligned(line, x + 18, ty, 12.5, 'rgba(32,30,29,0.75)', '500', 'left');
+          ty += 17;
+        });
+        enLines.forEach(line => {
+          drawTextAligned(line, x + 18, ty, 11, 'rgba(32,30,29,0.5)', '400', 'left');
+          ty += 15;
+        });
       }
-      const color = mine ? '#ffe08a' : 'rgba(255,255,255,0.9)';
-      drawText(`#${i + 1}`, x + 16, y, 14, color, '700');
-      ctx.save();
-      ctx.textAlign = 'left';
-      ctx.font = `600 14px "Segoe UI", Tahoma, sans-serif`;
-      ctx.fillStyle = color;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(entry.username || '?', x + 44, y);
-      ctx.restore();
-      ctx.save();
-      ctx.textAlign = 'right';
-      ctx.font = `700 14px "Segoe UI", Tahoma, sans-serif`;
-      ctx.fillStyle = color;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(entry.bestScore || 0), x + listW, y);
-      ctx.restore();
+
+      y += totalH + 10;
     });
   }
 
-  function drawLogoutLabel() {
-    if (!CamelAuth.isLoggedIn()) return;
-    const { x, y, w, h } = LOGOUT_LABEL;
-    const name = CamelAuth.currentUsername() || '';
-    drawText(`${name} · Log out`, x + w / 2, y + h / 2, 12, 'rgba(255,255,255,0.75)', '500');
+  function drawSettingsRow(r, label, value) {
+    ctx.beginPath();
+    ctx.moveTo(r.x, r.y + r.h);
+    ctx.lineTo(r.x + r.w, r.y + r.h);
+    ctx.strokeStyle = 'rgba(32,30,29,0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    drawTextAligned(label, r.x, r.y + r.h / 2, 15, CJ_TEXT, '500', 'left');
+    if (value) drawTextAligned(value, r.x + r.w, r.y + r.h / 2, 13, 'rgba(32,30,29,0.5)', '500', 'right');
+  }
+
+  // ---- Profile (new screen): stats the game actually stores ----
+  function drawProfileScreen() {
+    drawOutlinedText('ملفي', LW / 2, 56, 26, CJ_TEXT);
+    drawText('Profile', LW / 2, 84, 14, 'rgba(32,30,29,0.55)', '600');
+
+    const loggedIn = CamelAuth.isLoggedIn();
+    const name = CamelAuth.currentUsername();
+
+    ctx.beginPath();
+    ctx.arc(LW / 2, 148, 34, 0, Math.PI * 2);
+    ctx.fillStyle = CJ_ACCENT;
+    ctx.fill();
+    drawTextAligned(loggedIn ? name[0].toUpperCase() : '؟', LW / 2, 148, 26, CJ_BG, '700', 'center');
+    drawText(loggedIn ? name : 'ضيف · Guest', LW / 2, 198, 17, CJ_TEXT, '700');
+    drawText(loggedIn ? 'حساب مسجّل' : 'لم يُسجَّل بعد', LW / 2, 218, 12, 'rgba(32,30,29,0.55)', '500');
+
+    const cardY = 240, cardH = 84, cardW = 168;
+    [[24, 'أفضل نتيجة', String(best)], [24 + cardW + 16, 'المركز عالمياً', myRank != null ? `#${myRank}` : '—']].forEach(([cx, label, value]) => {
+      roundRectPath(cx, cardY, cardW, cardH, 22);
+      ctx.fillStyle = CJ_SURFACE;
+      ctx.fill();
+      drawTextAligned(label, cx + 16, cardY + 22, 11, 'rgba(32,30,29,0.55)', '500', 'left');
+      ctx.font = `30px ${FONT_HEAD}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = CJ_TEXT;
+      ctx.fillText(value, cx + 16, cardY + 56);
+    });
+
+    const city = CITIES.find(c => c.key === selectedCity);
+    const charLabel = selectedCharacter === 'woman' ? 'امرأة' : 'رجل';
+    roundRectPath(24, cardY + cardH + 12, cardW * 2 + 16, 66, 22);
+    ctx.fillStyle = CJ_SURFACE;
+    ctx.fill();
+    drawTextAligned('المدينة والشخصية', 40, cardY + cardH + 30, 11, 'rgba(32,30,29,0.55)', '500', 'left');
+    drawTextAligned(`${city ? city.nameAr : ''} · ${charLabel}`, 40, cardY + cardH + 52, 15, CJ_TEXT, '700', 'left');
+
+    if (!loggedIn) {
+      const ctaY = PROFILE_SIGNUP_BTN.y - 62;
+      roundRectPath(24, ctaY, 352, 106, 24);
+      ctx.fillStyle = CJ_TEXT;
+      ctx.fill();
+      drawTextAligned('احفظ نتيجتك', 44, ctaY + 24, 16, CJ_BG, '700', 'left');
+      drawTextAligned('نتيجة الضيف على هذا الجهاز فقط.', 44, ctaY + 42, 11.5, 'rgba(245,234,216,0.8)', '500', 'left');
+      drawTextAligned('أنشئ حساباً لتظهر في لوحة المتصدرين.', 44, ctaY + 57, 11.5, 'rgba(245,234,216,0.8)', '500', 'left');
+      roundRectPath(PROFILE_SIGNUP_BTN.x, PROFILE_SIGNUP_BTN.y, PROFILE_SIGNUP_BTN.w, PROFILE_SIGNUP_BTN.h, 999);
+      ctx.fillStyle = CJ_ACCENT;
+      ctx.fill();
+      drawText('حساب جديد · Sign up', LW / 2, PROFILE_SIGNUP_BTN.y + PROFILE_SIGNUP_BTN.h / 2, 15, CJ_BG, '700');
+    }
+
+    drawSettingsRow(PROFILE_SOUND_ROW, 'الصوت · العود', Music.isMuted() ? 'مُتوقّف' : 'مُفعّل');
+    drawSettingsRow(PROFILE_HOWTO_ROW, 'كيف تلعب');
+    if (loggedIn) {
+      drawTextAligned('تسجيل الخروج', PROFILE_LOGOUT_ROW.x, PROFILE_LOGOUT_ROW.y + PROFILE_LOGOUT_ROW.h / 2, 15, CJ_ACCENT_DARK, '600', 'left');
+    }
   }
 
   // Renders a standalone score-card image (independent canvas, not the game's)
@@ -1471,27 +1720,34 @@
     ctx.restore();
   }
 
+  // Menu/UI screens use the Organic system's flat cream background — only
+  // actual gameplay (and its game-over overlay) keeps the vivid sunset sky
+  // and skyline, matching the design's own screens (2a-2e flat, 2f alone
+  // uses the game world).
   function draw() {
-    drawSky();
-
     if (state === 'authCheck' || state === 'auth') {
-      drawHorizon('desert');
+      ctx.fillStyle = CJ_BG;
+      ctx.fillRect(0, 0, LW, LH);
       return; // the HTML auth overlay covers the rest; skip the mute button too
-    } else if (state === 'citySelect') {
-      drawHorizon('desert');
-      drawCitySelectScreen();
-      drawLogoutLabel();
-    } else if (state === 'characterSelect') {
-      drawHorizon(currentBiome);
-      drawSkyline(selectedCity);
-      drawCharacterSelectScreen();
-      drawBackButton();
-    } else if (state === 'leaderboard') {
-      drawHorizon(currentBiome);
-      drawSkyline(selectedCity);
-      drawLeaderboardScreen();
-      drawBackButton();
+    }
+
+    if (state === 'home' || state === 'leaderboard' || state === 'howto' || state === 'profile') {
+      ctx.fillStyle = CJ_BG;
+      ctx.fillRect(0, 0, LW, LH);
+      if (state === 'home') {
+        drawHomeScreen();
+      } else if (state === 'leaderboard') {
+        drawLeaderboardScreen();
+        drawBackButton();
+      } else if (state === 'howto') {
+        drawHowToScreen();
+        drawBackButton();
+      } else if (state === 'profile') {
+        drawProfileScreen();
+        drawBackButton();
+      }
     } else {
+      drawSky();
       drawHorizon(currentBiome);
       drawSkyline(selectedCity);
       drawPipes();
@@ -1499,7 +1755,6 @@
       drawPlayer();
       drawHUD();
       drawPopups();
-      if (state === 'start') { drawBackButton(); drawLeaderboardButton(); }
       if (state === 'gameover') drawShareButton();
     }
 

@@ -3,25 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#3a1f4d">
+<meta name="theme-color" content="#f5ead8">
 <title>قفزة الجمل | Camel Jump</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <canvas id="game"></canvas>
 
 <div id="authOverlay" class="auth-overlay" hidden>
+  <div class="auth-blob"></div>
   <div class="auth-card">
     <h1>قفزة الجمل</h1>
     <p class="auth-sub">Camel Jump</p>
-    <input id="authUsername" class="auth-input" type="text" placeholder="Username · اسم المستخدم" autocomplete="username" maxlength="20">
-    <input id="authEmail" class="auth-input" type="email" placeholder="Email (for sign up only) · البريد الإلكتروني" autocomplete="email" maxlength="100">
-    <input id="authPassword" class="auth-input" type="password" placeholder="Password · كلمة المرور" autocomplete="current-password" maxlength="64">
+    <div class="auth-camel" aria-hidden="true">
+      <svg viewBox="0 0 150 115" width="120" height="92"><g fill="#c99a63"><rect x="42" y="72" width="11" height="36" rx="5.5"></rect><rect x="58" y="76" width="11" height="32" rx="5.5"></rect><rect x="78" y="72" width="11" height="36" rx="5.5"></rect><rect x="93" y="76" width="11" height="32" rx="5.5"></rect><rect x="24" y="56" width="20" height="8" rx="4"></rect><ellipse cx="72" cy="62" rx="34" ry="21"></ellipse><path d="M46 50 Q72 14 100 50 Z"></path><rect x="98" y="26" width="15" height="34" rx="7.5"></rect><ellipse cx="114" cy="26" rx="18" ry="12"></ellipse><path d="M106 16 q3 -14 11 -3 z"></path></g><ellipse cx="128" cy="30" rx="8" ry="6.5" fill="#a97c46"></ellipse><circle cx="116" cy="22" r="2.4" fill="#3a2a18"></circle></svg>
+    </div>
+    <input id="authUsername" class="auth-input" type="text" placeholder="اسم المستخدم · Username" autocomplete="username" maxlength="20">
+    <input id="authEmail" class="auth-input" type="email" placeholder="البريد الإلكتروني (لإنشاء حساب فقط) · Email" autocomplete="email" maxlength="100">
+    <input id="authPassword" class="auth-input" type="password" placeholder="كلمة المرور · Password" autocomplete="current-password" maxlength="64">
     <div id="authError" class="auth-error"></div>
-    <button id="authLoginBtn" class="auth-btn auth-btn-primary" type="button">Log In</button>
-    <button id="authSignupBtn" class="auth-btn" type="button">Sign Up</button>
-    <button id="authForgotBtn" class="auth-link" type="button">Forgot password?</button>
-    <button id="authGuestBtn" class="auth-link" type="button">Continue as guest</button>
+    <button id="authLoginBtn" class="auth-btn auth-btn-primary" type="button">دخول · Log in</button>
+    <button id="authSignupBtn" class="auth-btn auth-btn-secondary" type="button">حساب جديد · Sign up</button>
+    <button id="authForgotBtn" class="auth-link" type="button">نسيت كلمة المرور؟ · Forgot password?</button>
+    <div class="auth-divider"></div>
+    <button id="authGuestBtn" class="auth-btn auth-btn-guest" type="button">متابعة كضيف · Play as guest</button>
+    <div class="auth-guest-note">نتيجة الضيف محفوظة على هذا الجهاز فقط.<br>Sign up later to claim a rank.</div>
   </div>
 </div>
 

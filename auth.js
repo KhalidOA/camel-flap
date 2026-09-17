@@ -94,18 +94,18 @@
     return doc.exists ? (doc.data().bestScore || 0) : 0;
   }
 
-  async function syncBestScore(score) {
+  async function syncBestScore(score, cityNameAr) {
     if (!currentUser || !db) return;
     try {
       await db.collection('users').doc(currentUser.uid).set(
         { bestScore: score, updatedAt: Date.now() },
         { merge: true }
       );
-      // Separate, publicly-readable doc (username + score only, no email) so
+      // Separate, publicly-readable doc (username + score + city, no email) so
       // the leaderboard can list other players without exposing anyone's
       // private users/{uid} doc.
       await db.collection('leaderboard').doc(currentUser.uid).set(
-        { username: currentUser.displayName, bestScore: score, updatedAt: Date.now() },
+        { username: currentUser.displayName, bestScore: score, city: cityNameAr || null, updatedAt: Date.now() },
         { merge: true }
       );
     } catch (e) {
@@ -122,6 +122,23 @@
     return snap.docs.map(doc => doc.data());
   }
 
+  // Cheap rank lookup that doesn't require pulling the whole collection:
+  // Firestore's count() aggregation is a single read no matter how many
+  // documents match, so "how many players beat this score" stays cheap
+  // even as the leaderboard grows.
+  async function getMyRank(score) {
+    if (!db || score == null) return null;
+    try {
+      const snap = await db.collection('leaderboard')
+        .where('bestScore', '>', score)
+        .count()
+        .get();
+      return snap.data().count + 1;
+    } catch (e) {
+      return null;
+    }
+  }
+
   window.CamelAuth = {
     isAvailable: () => configured,
     ready: (cb) => { if (ready) cb(currentUser); else readyCallbacks.push(cb); },
@@ -134,5 +151,6 @@
     getBestScore,
     syncBestScore,
     getLeaderboard,
+    getMyRank,
   };
 })();
